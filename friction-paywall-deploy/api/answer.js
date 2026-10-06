@@ -33,7 +33,7 @@ module.exports = async (req, res) => {
     return;
   }
 
-  const model = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+  const model = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
 
   try {
     const upstream = await fetch(
