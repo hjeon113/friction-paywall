@@ -1,0 +1,6 @@
+{
+  "name": "friction-paywall",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Friction Paywall provotype — static page + one serverless function."
+}

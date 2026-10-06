@@ -1,0 +1,627 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Friction Paywall</title>
+<style>
+  /* layout concept: one classic Windows-95-style dialog window — navy title bar,
+     grey chrome, sunken white fields, beveled buttons — stepping through screens */
+  :root{
+    --face:#C0C0C0; --paper:#FFFFFF; --ink:#000000; --muted:#4B4B4B;
+    --hi:#FFFFFF; --lo:#808080; --dk:#000000;
+    --title:#000080; --title-fg:#FFFFFF;
+    --accent:#000080; --accent-fg:#FFFFFF;
+    --warn-bg:#FFFFCC; --warn-border:#000000; --warn-ink:#000000;
+    --ok:#004000; --link:#0000CC;
+    color-scheme: light;
+  }
+
+  *{box-sizing:border-box;}
+  body{
+    background:var(--face); color:var(--ink);
+    font-family:Tahoma,"MS Sans Serif",Geneva,Verdana,sans-serif;
+    font-size:12px;
+    padding-inline:16px; padding-block:24px;
+    display:flex; justify-content:center;
+    margin:0;
+  }
+  .mono{ font-family:"Courier New",Courier,monospace; }
+  .wrap{ width:100%; max-width:440px; min-width:0; display:flex; flex-direction:column; gap:10px; }
+
+  .topbar{
+    background:var(--title); color:var(--title-fg);
+    border:2px solid; border-color:var(--hi) var(--dk) var(--dk) var(--hi);
+    padding:6px 10px;
+  }
+  .topbar .app{ font-size:10px; letter-spacing:0.1em; text-transform:uppercase; color:#B9C4E8; margin-bottom:2px; }
+  .topbar h1{ font-size:14px; margin:0; font-weight:700; }
+  .topbar .pid{ margin-top:8px; display:flex; align-items:center; gap:8px; font-size:11px; color:#DCE2F2; }
+  .topbar .pid input{
+    background:var(--paper); border:2px solid; border-color:var(--dk) var(--hi) var(--hi) var(--dk);
+    color:var(--ink); padding:2px 4px; font-size:11px; font-family:inherit; width:90px; min-width:0;
+  }
+  .topbar .pid input::placeholder{ color:#888; }
+
+  .card{
+    background:var(--paper); color:var(--ink);
+    border:2px solid; border-color:var(--dk) var(--hi) var(--hi) var(--dk);
+    padding:14px;
+  }
+  .step-head{ display:flex; align-items:baseline; gap:8px; margin-bottom:10px; border-bottom:1px solid var(--lo); padding-bottom:6px; }
+  .step-head .sn{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:18px; height:18px; background:var(--accent); color:var(--accent-fg);
+    border:1px solid var(--dk);
+    font-size:11px; font-weight:700; flex:none;
+  }
+  .step-head h2{ font-size:13px; margin:0; font-weight:700; }
+
+  .hint{ font-size:11px; color:var(--muted); margin:0 0 10px 0; line-height:1.5; }
+
+  textarea, input[type=text]{
+    width:100%; min-width:0; background:var(--paper); color:var(--ink);
+    border:2px solid; border-color:var(--dk) var(--hi) var(--hi) var(--dk);
+    padding:6px 8px; font-family:inherit; font-size:12px; line-height:1.5;
+    resize:vertical;
+  }
+  textarea:focus, input[type=text]:focus{ outline:1px dotted var(--ink); outline-offset:1px; }
+
+  .btn{
+    appearance:none; background:var(--face); color:var(--ink);
+    border:2px solid; border-color:var(--hi) var(--dk) var(--dk) var(--hi);
+    box-shadow: inset 1px 1px 0 #E8E8E8, inset -1px -1px 0 var(--lo);
+    padding:7px 14px; font-size:12px; font-weight:700;
+    font-family:inherit; cursor:pointer; width:100%;
+  }
+  .btn:active:not(:disabled){
+    border-color:var(--dk) var(--hi) var(--hi) var(--dk);
+    box-shadow: inset 1px 1px 0 var(--lo), inset -1px -1px 0 #E8E8E8;
+  }
+  .btn:disabled{ color:#808080; cursor:not-allowed; text-shadow:1px 1px 0 #E8E8E8; }
+  .btn.ghost{ width:auto; }
+  .btn.small{ width:auto; padding:5px 10px; font-size:11px; }
+  .btn:focus-visible{ outline:1px dotted var(--ink); outline-offset:2px; }
+
+  .tier-grid{ border:2px solid; border-color:var(--dk) var(--hi) var(--hi) var(--dk); background:var(--paper); }
+  .tier{
+    display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%;
+    border:none; border-bottom:1px solid var(--lo); padding:8px 10px; cursor:pointer;
+    background:var(--paper); color:var(--ink); text-align:left; font-family:inherit;
+  }
+  .tier:last-child{ border-bottom:none; }
+  .tier[aria-pressed="true"]{ background:var(--accent); color:var(--accent-fg); }
+  .tier[aria-pressed="true"] .tdesc{ color:#CCD4EE; }
+  .tier .tname{ font-size:12px; font-weight:700; }
+  .tier .tdesc{ font-size:10.5px; color:var(--muted); margin-top:1px; }
+  .tier .tprice{ font-family:"Courier New",Courier,monospace; font-size:12px; font-weight:700; flex:none; }
+
+  .balrow{ display:flex; justify-content:space-between; align-items:baseline; font-size:11px; color:var(--muted); margin-bottom:4px; }
+  .balrow b{ color:var(--ink); font-family:"Courier New",Courier,monospace; }
+  .barwrap{
+    height:14px; background:var(--paper); overflow:hidden; margin-bottom:10px;
+    border:2px solid; border-color:var(--dk) var(--hi) var(--hi) var(--dk);
+  }
+  .barfill{
+    height:100%; background-color:var(--accent);
+    background-image: repeating-linear-gradient(to right, var(--accent) 0 9px, var(--paper) 9px 11px);
+    transition:width .2s linear;
+  }
+
+  .warn{
+    background:var(--warn-bg); border:1px solid var(--warn-border); color:var(--warn-ink);
+    padding:6px 9px; font-size:11px; margin-bottom:10px; font-weight:700;
+  }
+
+  .earn-item{ border:1px solid var(--lo); border-top-color:var(--hi); padding:9px 10px; margin-bottom:0; background:var(--paper); }
+  .earn-item + .earn-item{ border-top:none; }
+  .earn-item.done{ color:var(--muted); }
+  .earn-row{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
+  .earn-row .en{ font-size:12px; font-weight:700; }
+  .earn-row .ep{ font-family:"Courier New",Courier,monospace; font-size:11px; flex:none; }
+  .earn-body{ margin-top:8px; display:flex; flex-direction:column; gap:6px; }
+  .tickrow{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .tickcount{ font-family:"Courier New",Courier,monospace; font-size:11px; color:var(--muted); }
+  .donetag{ font-size:11px; color:var(--ok); font-weight:700; }
+
+  .answer-box{
+    background:var(--paper); border:2px solid; border-color:var(--dk) var(--hi) var(--hi) var(--dk);
+    padding:12px; font-size:12px; line-height:1.6; white-space:pre-wrap;
+  }
+  .spinner-line{ font-size:12px; color:var(--muted); font-style:italic; }
+
+  .receipt{
+    font-family:"Courier New",Courier,monospace; font-size:11.5px;
+    border:2px solid; border-color:var(--dk) var(--hi) var(--hi) var(--dk);
+    padding:12px 14px; background:var(--paper); line-height:1.8;
+  }
+  .receipt .hdr{ font-weight:700; letter-spacing:0.06em; text-align:center; display:block; margin-bottom:8px; }
+  .receipt .row{ display:flex; justify-content:space-between; }
+  .receipt .hr{ border-top:1px dashed var(--lo); margin:8px 0; }
+
+  .ratebtns{ display:flex; gap:6px; margin-top:10px; }
+  .ratebtns .btn[aria-pressed="true"]{
+    border-color:var(--dk) var(--hi) var(--hi) var(--dk);
+    box-shadow: inset 1px 1px 0 var(--lo), inset -1px -1px 0 #E8E8E8;
+  }
+
+  .label{ font-size:11px; font-weight:700; margin-bottom:4px; display:block; }
+  .field{ margin-bottom:10px; }
+
+  .toplink{ font-size:11px; color:var(--link); text-decoration:underline; background:none; border:none; cursor:pointer; font-family:inherit; padding:0; }
+  .topbar .toplink{ color:#FFFFFF; font-weight:700; }
+  .log-head{ display:flex; align-items:center; justify-content:space-between; }
+  .log-head h1{ font-size:12px; margin:0; font-weight:700; }
+  .logtable{ width:100%; border-collapse:collapse; font-size:10.5px; margin-top:8px; }
+  .logtable th, .logtable td{ border:1px solid var(--lo); padding:4px 5px; text-align:left; }
+  .logtable th{ background:var(--face); font-weight:700; }
+  .logwrap{ overflow-x:auto; }
+
+  .err{ font-size:11px; color:var(--warn-ink); background:var(--warn-bg); border:1px solid var(--warn-border); padding:6px 8px; margin-top:6px; }
+
+  [hidden]{ display:none !important; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="topbar">
+    <div class="app">Friction Services</div>
+    <h1>Friction Paywall</h1>
+    <div class="pid">Participant Name
+      <input type="text" id="participant-name" placeholder="e.g. Hyejin" />
+    </div>
+  </div>
+
+  <div id="log-panel" hidden>
+    <div class="topbar log-head">
+      <h1>Facilitator Log</h1>
+      <button class="toplink" id="log-close">&times; close</button>
+    </div>
+    <div class="card" style="border-top:none;">
+      <p class="hint">Reads every session saved by this page, from any device.</p>
+      <button class="btn ghost small" id="log-refresh">Refresh log</button>
+      <div id="log-body" class="logwrap" style="margin-top:10px;"></div>
+    </div>
+  </div>
+
+  <!-- Step 1: Ask -->
+  <div class="card" id="step-ask">
+    <div class="step-head"><span class="sn">1</span><h2>Ask your question</h2></div>
+    <p class="hint">Type a real question you actually want answered.</p>
+    <div class="field">
+      <textarea id="q-input" rows="3" placeholder="What do you want to know?"></textarea>
+    </div>
+    <button class="btn" id="q-submit" disabled>Submit question</button>
+  </div>
+
+  <!-- Step 2: Tier -->
+  <div class="card" id="step-tier" hidden>
+    <div class="step-head"><span class="sn">2</span><h2>Select your answer</h2></div>
+    <p class="hint">Every level of detail has a price. Pick what you want &mdash; you'll earn the Friction Credits (FC) next.</p>
+    <div class="tier-grid" id="tier-grid"></div>
+    <button class="btn" id="tier-continue" disabled style="margin-top:12px;">Continue</button>
+  </div>
+
+  <!-- Step 3: Earn -->
+  <div class="card" id="step-earn" hidden>
+    <div class="step-head"><span class="sn">3</span><h2>Earn the missing FC</h2></div>
+    <div class="balrow"><span>Balance</span><b id="bal-text">0 / 0 FC</b></div>
+    <div class="barwrap"><div class="barfill" id="bal-fill" style="width:0%"></div></div>
+    <div class="warn" id="insufficient-warn">&#9888; INSUFFICIENT BALANCE</div>
+    <div id="earn-list"></div>
+    <button class="btn" id="earn-continue" disabled>Get your answer</button>
+  </div>
+
+  <!-- Step 4: Reveal -->
+  <div class="card" id="step-reveal" hidden>
+    <div class="step-head"><span class="sn">4</span><h2>Receiving your answer</h2></div>
+    <div id="reveal-body">
+      <p class="spinner-line" id="reveal-status">Processing payment&hellip;</p>
+    </div>
+  </div>
+
+  <!-- Step 5: Receipt -->
+  <div class="card" id="step-receipt" hidden>
+    <div class="step-head"><span class="sn">5</span><h2>Transaction receipt</h2></div>
+    <div class="receipt" id="receipt-body"></div>
+    <div class="label" style="margin-top:14px;">How was this, for you?</div>
+    <textarea id="experience-input" rows="3" placeholder="In your own words."></textarea>
+    <button class="btn" id="experience-continue" style="margin-top:8px;" disabled>Continue</button>
+  </div>
+
+  <!-- Step 6: Facilitator notes + save -->
+  <div class="card" id="step-notes" hidden>
+    <div class="step-head"><h2>Facilitator notes</h2></div>
+    <p class="hint bi" lang="ko">세션 후 작성 &middot; optional, filled in after the session</p>
+    <div class="field">
+      <span class="label">One exact quote</span>
+      <textarea id="note-quote" rows="2"></textarea>
+    </div>
+    <div class="field">
+      <span class="label">What this revealed</span>
+      <textarea id="note-revealed" rows="2"></textarea>
+    </div>
+    <div class="field">
+      <span class="label">What this complicated</span>
+      <textarea id="note-complicated" rows="2"></textarea>
+    </div>
+    <button class="btn" id="save-session">Save session &amp; start next participant</button>
+    <div id="save-status" class="hint" style="margin-top:8px;"></div>
+  </div>
+</div>
+
+<!-- Firebase (Firestore) — used only to save/read session records.
+     These values are not secret; they identify the project, and access
+     is controlled by the Firestore security rules you set in the
+     Firebase console (see README.md). -->
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script>
+  // === FILL THIS IN from Firebase console → Project settings → Your apps → Web app config ===
+  const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT.firebaseapp.com",
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_PROJECT.appspot.com",
+    messagingSenderId: "YOUR_SENDER_ID",
+    appId: "YOUR_APP_ID"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+</script>
+
+<script>
+(function(){
+  const TIERS = [
+    { id:'hint', label:'Hint', price:10, desc:'A vague nudge, nothing more.',
+      instruction:'Give the vaguest possible hint toward the answer, in one short sentence. Do not reveal the answer itself.' },
+    { id:'short', label:'Short Answer', price:20, desc:'A direct answer, no explanation.',
+      instruction:'Give a short, direct answer in 1-2 sentences. No explanation or caveats.' },
+    { id:'detailed', label:'Detailed Explanation', price:50, desc:'A full answer with reasoning.',
+      instruction:'Give a complete, well-reasoned answer with explanation, in a few short paragraphs.' },
+    { id:'complete', label:'Complete the Task for Me', price:100, desc:'The finished result, done for you.',
+      instruction:"Fully complete the task described in the question on the participant's behalf. Produce the finished result itself, not advice about how to do it." }
+  ];
+  const EARN_ACTIONS = [
+    { id:'clicks', label:'Press this box 50 times', price:10, kind:'clicks', target:50 },
+    { id:'copy', label:'Copy this sentence exactly', price:20, kind:'copy', phrase:'Smoothness redistributes friction.' },
+    { id:'loading', label:'Watch this load', price:30, kind:'loading', seconds:30 },
+    { id:'wait', label:'Wait 60 seconds, doing nothing', price:40, kind:'wait', seconds:60 }
+  ];
+
+  const $ = (id) => document.getElementById(id);
+  const activeTimers = {};
+  function clearActionTimer(id){
+    if(activeTimers[id]){ clearInterval(activeTimers[id]); delete activeTimers[id]; }
+  }
+
+  const state = {
+    participantName: '', question: '', tier: null, startedAt: null,
+    earnDone: {}, earnText: {}, timerStart: {}, clickCount: 0, balance: 0,
+    answer: '', answeredAt: null, experience: ''
+  };
+
+  function resetState(){
+    state.question=''; state.tier=null; state.startedAt=null; state.earnDone={};
+    state.earnText={}; state.timerStart={}; state.clickCount=0; state.balance=0; state.answer='';
+    state.answeredAt=null; state.experience='';
+    EARN_ACTIONS.forEach(a=>clearActionTimer(a.id));
+    $('q-input').value=''; $('q-submit').disabled = true;
+    $('tier-continue').disabled = true;
+    document.querySelectorAll('.tier').forEach(el=>el.setAttribute('aria-pressed','false'));
+    $('experience-input').value=''; $('experience-continue').disabled = true;
+    $('note-quote').value=''; $('note-revealed').value=''; $('note-complicated').value='';
+    $('save-status').textContent='';
+    renderEarnList();
+    showStep('step-ask');
+  }
+
+  function showStep(id){
+    ['step-ask','step-tier','step-earn','step-reveal','step-receipt','step-notes'].forEach(s=>{
+      $(s).hidden = (s !== id);
+    });
+  }
+
+  function fmtTime(ms){
+    const s = Math.round(ms/1000);
+    const m = Math.floor(s/60), r = s%60;
+    return m + ':' + String(r).padStart(2,'0');
+  }
+
+  // --- Step 1: ask ---
+  $('q-input').addEventListener('input', ()=>{
+    $('q-submit').disabled = $('q-input').value.trim().length === 0;
+  });
+  $('q-submit').addEventListener('click', ()=>{
+    state.question = $('q-input').value.trim();
+    state.startedAt = Date.now();
+    buildTierGrid();
+    showStep('step-tier');
+  });
+
+  // --- Step 2: tier ---
+  function buildTierGrid(){
+    const grid = $('tier-grid');
+    grid.innerHTML = '';
+    TIERS.forEach(t=>{
+      const b = document.createElement('button');
+      b.type='button'; b.className='tier'; b.id='tier-'+t.id;
+      b.setAttribute('aria-pressed','false');
+      b.innerHTML = '<div><div class="tname">'+t.label+'</div><div class="tdesc">'+t.desc+'</div></div>'+
+        '<div class="tprice mono">'+t.price+' FC</div>';
+      b.addEventListener('click', ()=>{
+        document.querySelectorAll('.tier').forEach(el=>el.setAttribute('aria-pressed','false'));
+        b.setAttribute('aria-pressed','true');
+        state.tier = t;
+        $('tier-continue').disabled = false;
+      });
+      grid.appendChild(b);
+    });
+  }
+  $('tier-continue').addEventListener('click', ()=>{
+    renderEarnList();
+    showStep('step-earn');
+  });
+
+  // --- Step 3: earn ---
+  function updateBalanceUI(){
+    const price = state.tier ? state.tier.price : 0;
+    $('bal-text').textContent = state.balance + ' / ' + price + ' FC';
+    $('bal-fill').style.width = Math.min(100, (price? state.balance/price*100 : 0)) + '%';
+    $('insufficient-warn').hidden = state.balance >= price;
+    $('earn-continue').disabled = state.balance < price;
+  }
+
+  function renderEarnList(){
+    if(!state.tier) return;
+    const list = $('earn-list');
+    list.innerHTML = '';
+    EARN_ACTIONS.forEach(a=>{
+      const item = document.createElement('div');
+      item.className = 'earn-item' + (state.earnDone[a.id] ? ' done' : '');
+      const done = !!state.earnDone[a.id];
+      let bodyHtml = '';
+      if(done){
+        bodyHtml = '<div class="donetag">&#10003; recorded (+'+a.price+' FC)</div>';
+      } else if(a.kind === 'clicks'){
+        bodyHtml = '<div class="earn-body"><div class="tickrow">'+
+              '<button class="btn small" id="earn-click-'+a.id+'">Press</button>'+
+              '<span class="tickcount" id="earn-count-'+a.id+'">0 / '+a.target+'</span>'+
+            '</div></div>';
+      } else if(a.kind === 'wait'){
+        bodyHtml = '<div class="earn-body"><div class="tickrow">'+
+              '<button class="btn small" id="earn-start-'+a.id+'">Start waiting</button>'+
+              '<span class="tickcount" id="earn-count-'+a.id+'">'+a.seconds+'s left</span>'+
+            '</div></div>';
+      } else if(a.kind === 'loading'){
+        bodyHtml = '<div class="earn-body">'+
+              '<button class="btn small" id="earn-start-'+a.id+'">Start loading</button>'+
+              '<div class="barwrap" style="margin-top:8px;margin-bottom:0;"><div class="barfill" id="earn-bar-'+a.id+'" style="width:0%"></div></div>'+
+            '</div>';
+      } else if(a.kind === 'copy'){
+        bodyHtml = '<div class="earn-body">'+
+              '<div class="hint" style="margin:0 0 4px 0;">&ldquo;'+a.phrase+'&rdquo;</div>'+
+              '<textarea id="earn-text-'+a.id+'" rows="2" placeholder="Type it exactly as shown."></textarea>'+
+              '<button class="btn small" id="earn-submit-'+a.id+'">Submit (+'+a.price+' FC)</button>'+
+              '<div class="err" id="earn-err-'+a.id+'" hidden>Not an exact match &mdash; try again.</div>'+
+            '</div>';
+      }
+      item.innerHTML = '<div class="earn-row"><span class="en">'+a.label+'</span><span class="ep mono">+'+a.price+' FC</span></div>'+bodyHtml;
+      list.appendChild(item);
+
+      if(done) return;
+
+      if(a.kind==='clicks'){
+        $('earn-click-'+a.id).addEventListener('click', ()=>{
+          state.clickCount += 1;
+          $('earn-count-'+a.id).textContent = state.clickCount + ' / ' + a.target;
+          if(state.clickCount >= a.target){
+            state.earnDone[a.id] = true;
+            state.balance += a.price;
+            renderEarnList();
+            updateBalanceUI();
+          }
+        });
+      }
+
+      if(a.kind==='copy'){
+        $('earn-submit-'+a.id).addEventListener('click', ()=>{
+          const txt = $('earn-text-'+a.id).value.trim();
+          if(txt === a.phrase){
+            state.earnText[a.id] = txt;
+            state.earnDone[a.id] = true;
+            state.balance += a.price;
+            renderEarnList();
+            updateBalanceUI();
+          } else {
+            $('earn-err-'+a.id).hidden = false;
+          }
+        });
+      }
+
+      if(a.kind==='wait' || a.kind==='loading'){
+        $('earn-start-'+a.id).addEventListener('click', ()=>{
+          $('earn-start-'+a.id).disabled = true;
+          state.timerStart[a.id] = Date.now();
+          clearActionTimer(a.id);
+          activeTimers[a.id] = setInterval(()=>{
+            const elapsed = Date.now() - state.timerStart[a.id];
+            const totalMs = a.seconds * 1000;
+            const remaining = Math.max(0, totalMs - elapsed);
+            if(a.kind==='wait'){
+              const el = $('earn-count-'+a.id);
+              if(el) el.textContent = Math.ceil(remaining/1000) + 's left';
+            } else {
+              const el = $('earn-bar-'+a.id);
+              if(el) el.style.width = Math.min(100, elapsed/totalMs*100) + '%';
+            }
+            if(remaining <= 0){
+              clearActionTimer(a.id);
+              state.earnDone[a.id] = true;
+              state.balance += a.price;
+              renderEarnList();
+              updateBalanceUI();
+            }
+          }, 200);
+        });
+      }
+    });
+    updateBalanceUI();
+  }
+
+  $('earn-continue').addEventListener('click', async ()=>{
+    showStep('step-reveal');
+    $('reveal-body').innerHTML = '<p class="spinner-line" id="reveal-status">Processing payment&hellip;</p>';
+    await doReveal();
+  });
+
+  // --- Step 4: reveal (calls the serverless /api/answer function) ---
+  async function doReveal(){
+    try{
+      const statusEl = $('reveal-status');
+      if(statusEl) statusEl.textContent = 'Receiving answer…';
+
+      const prompt = 'You are answering a real question from a participant in a design-research '+
+        'experiment about AI and friction. Respond directly and only to their question, with no '+
+        'meta-commentary about the experiment.\n\nQuestion: "'+state.question+'"\n\n'+
+        'Requested depth: '+state.tier.label+'. '+state.tier.instruction;
+
+      const res = await fetch('/api/answer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt })
+      });
+      const data = await res.json().catch(()=>({}));
+      if(!res.ok){
+        throw new Error((data && data.error) || ('HTTP ' + res.status));
+      }
+
+      state.answer = (data && data.text) ? data.text : '(no answer returned)';
+      state.answeredAt = Date.now();
+      renderAnswerAndReceipt();
+    } catch(err){
+      const msg = (err && err.message) ? err.message : 'Could not retrieve an answer.';
+      $('reveal-body').innerHTML = '<p class="spinner-line">'+escapeHtml(msg)+'</p>'+
+        '<button class="btn" id="reveal-retry" style="margin-top:10px;">Try again</button>';
+      const retryBtn = $('reveal-retry');
+      if(retryBtn){
+        retryBtn.addEventListener('click', ()=>{
+          $('reveal-body').innerHTML = '<p class="spinner-line" id="reveal-status">Processing payment&hellip;</p>';
+          doReveal();
+        });
+      }
+    }
+  }
+
+  function renderAnswerAndReceipt(){
+    $('reveal-body').innerHTML = '<div class="answer-box">'+escapeHtml(state.answer)+'</div>'+
+      '<button class="btn" id="to-receipt" style="margin-top:12px;">Continue to receipt</button>';
+    $('to-receipt').addEventListener('click', ()=>{
+      buildReceipt();
+      showStep('step-receipt');
+    });
+  }
+
+  function escapeHtml(s){
+    const d = document.createElement('div'); d.textContent = s; return d.innerHTML;
+  }
+
+  // --- Step 5: receipt ---
+  function buildReceipt(){
+    const elapsedMs = state.answeredAt - state.startedAt;
+    const attempts = Object.keys(state.earnDone).length;
+    const el = $('receipt-body');
+    el.innerHTML =
+      '<span class="hdr">FRICTION RECEIPT</span>'+
+      '<div class="row"><span>Answer purchased</span><span>'+state.tier.label+'</span></div>'+
+      '<div class="row"><span>Price</span><span>'+state.tier.price+' FC</span></div>'+
+      '<div class="hr"></div>'+
+      '<div class="row"><span>Time spent</span><span id="receipt-time">'+fmtTime(elapsedMs)+'</span></div>'+
+      '<div class="row"><span>Attempts made</span><span>'+attempts+'</span></div>';
+  }
+
+  $('experience-input').addEventListener('input', ()=>{
+    $('experience-continue').disabled = $('experience-input').value.trim().length === 0;
+  });
+  $('experience-continue').addEventListener('click', ()=>{
+    state.experience = $('experience-input').value.trim();
+    showStep('step-notes');
+  });
+
+  // --- Step 6: save (writes to Firestore) ---
+  $('save-session').addEventListener('click', async ()=>{
+    const statusEl = $('save-status');
+    statusEl.textContent = 'Saving…';
+    const record = {
+      participantName: $('participant-name').value.trim() || null,
+      question: state.question,
+      tier: state.tier.id,
+      tierLabel: state.tier.label,
+      price: state.tier.price,
+      earnActions: EARN_ACTIONS.filter(a=>state.earnDone[a.id]).map(a=>({
+        id: a.id, label: a.label, price: a.price,
+        text: state.earnText[a.id] || null,
+        clicks: a.id === 'clicks' ? state.clickCount : null
+      })),
+      elapsedMs: state.answeredAt - state.startedAt,
+      answer: state.answer,
+      experience: state.experience,
+      facilitatorQuote: $('note-quote').value.trim() || null,
+      facilitatorRevealed: $('note-revealed').value.trim() || null,
+      facilitatorComplicated: $('note-complicated').value.trim() || null,
+      createdAt: new Date().toISOString()
+    };
+    try{
+      await db.collection('sessions').add(record);
+      statusEl.textContent = 'Session saved.';
+      setTimeout(()=>{ resetState(); }, 900);
+    } catch(err){
+      statusEl.innerHTML = '<span class="err">Could not save this session. You can try again.</span>';
+    }
+  });
+
+  // --- Facilitator log ---
+  // No visible button on the participant-facing screen: anyone handed this
+  // page could otherwise open every participant's saved answers. The panel
+  // only opens when the page is loaded with #log in the URL, which
+  // participants never see or guess.
+  function openLogIfRequested(){
+    if(location.hash === '#log'){
+      $('log-panel').hidden = false;
+      refreshLog();
+    }
+  }
+  window.addEventListener('hashchange', openLogIfRequested);
+  $('log-close').addEventListener('click', ()=>{
+    $('log-panel').hidden = true;
+    if(location.hash === '#log') location.hash = '';
+  });
+  async function refreshLog(){
+    const body = $('log-body');
+    body.textContent = 'Loading…';
+    try{
+      const snap = await db.collection('sessions').limit(50).get();
+      const docs = (snap && snap.docs) ? snap.docs : [];
+      if(docs.length === 0){ body.textContent = 'No sessions saved yet.'; return; }
+      let rows = docs.map(d=>{
+        const r = d.data ? d.data() : d;
+        const exc = (r.experience || '').slice(0, 60) + ((r.experience||'').length > 60 ? '…' : '');
+        return '<tr><td>'+(r.participantName||'—')+'</td><td>'+(r.tierLabel||'')+'</td>'+
+          '<td>'+fmtTime(r.elapsedMs||0)+'</td><td>'+exc+'</td></tr>';
+      }).join('');
+      body.innerHTML = '<table class="logtable"><tr><th>Participant</th><th>Tier</th><th>Time</th><th>Reflection</th></tr>'+rows+'</table>'+
+        '<p class="hint" style="margin-top:6px;">'+docs.length+' session(s) on record.</p>';
+    } catch(err){
+      body.textContent = 'Could not load the log.';
+    }
+  }
+  $('log-refresh').addEventListener('click', refreshLog);
+
+  // boot
+  showStep('step-ask');
+  openLogIfRequested();
+})();
+</script>
+</body>
+</html>
