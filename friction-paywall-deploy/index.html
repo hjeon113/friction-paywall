@@ -545,15 +545,12 @@
   $('experience-input').addEventListener('input', ()=>{
     $('experience-continue').disabled = $('experience-input').value.trim().length === 0;
   });
-  $('experience-continue').addEventListener('click', ()=>{
+   $('experience-continue').addEventListener('click', async ()=>{
     state.experience = $('experience-input').value.trim();
-    showStep('step-notes');
-  });
-
-  // --- Step 6: save (writes to Firestore) ---
-  $('save-session').addEventListener('click', async ()=>{
     const statusEl = $('save-status');
-    statusEl.textContent = 'Saving…';
+    $('experience-continue').disabled = true;
+    $('experience-continue').textContent = 'Saving…';
+    statusEl.textContent = '';
     const record = {
       participantName: $('participant-name').value.trim() || null,
       question: state.question,
@@ -568,60 +565,21 @@
       elapsedMs: state.answeredAt - state.startedAt,
       answer: state.answer,
       experience: state.experience,
-      facilitatorQuote: $('note-quote').value.trim() || null,
-      facilitatorRevealed: $('note-revealed').value.trim() || null,
-      facilitatorComplicated: $('note-complicated').value.trim() || null,
       createdAt: new Date().toISOString()
     };
     try{
       await db.collection('sessions').add(record);
-      statusEl.textContent = 'Session saved.';
-      setTimeout(()=>{ resetState(); }, 900);
+      $('experience-continue').textContent = 'Saved — thank you.';
+      setTimeout(()=>{ resetState(); }, 1200);
     } catch(err){
       statusEl.innerHTML = '<span class="err">Could not save this session. You can try again.</span>';
+      $('experience-continue').disabled = false;
+      $('experience-continue').textContent = 'Continue';
     }
   });
-
-  // --- Facilitator log ---
-  // No visible button on the participant-facing screen: anyone handed this
-  // page could otherwise open every participant's saved answers. The panel
-  // only opens when the page is loaded with #log in the URL, which
-  // participants never see or guess.
-  function openLogIfRequested(){
-    if(location.hash === '#log'){
-      $('log-panel').hidden = false;
-      refreshLog();
-    }
-  }
-  window.addEventListener('hashchange', openLogIfRequested);
-  $('log-close').addEventListener('click', ()=>{
-    $('log-panel').hidden = true;
-    if(location.hash === '#log') location.hash = '';
-  });
-  async function refreshLog(){
-    const body = $('log-body');
-    body.textContent = 'Loading…';
-    try{
-      const snap = await db.collection('sessions').limit(50).get();
-      const docs = (snap && snap.docs) ? snap.docs : [];
-      if(docs.length === 0){ body.textContent = 'No sessions saved yet.'; return; }
-      let rows = docs.map(d=>{
-        const r = d.data ? d.data() : d;
-        const exc = (r.experience || '').slice(0, 60) + ((r.experience||'').length > 60 ? '…' : '');
-        return '<tr><td>'+(r.participantName||'—')+'</td><td>'+(r.tierLabel||'')+'</td>'+
-          '<td>'+fmtTime(r.elapsedMs||0)+'</td><td>'+exc+'</td></tr>';
-      }).join('');
-      body.innerHTML = '<table class="logtable"><tr><th>Participant</th><th>Tier</th><th>Time</th><th>Reflection</th></tr>'+rows+'</table>'+
-        '<p class="hint" style="margin-top:6px;">'+docs.length+' session(s) on record.</p>';
-    } catch(err){
-      body.textContent = 'Could not load the log.';
-    }
-  }
-  $('log-refresh').addEventListener('click', refreshLog);
 
   // boot
   showStep('step-ask');
-  openLogIfRequested();
 })();
 </script>
 </body>
