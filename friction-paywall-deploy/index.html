@@ -501,7 +501,8 @@
       state.answeredAt = Date.now();
       renderAnswerAndReceipt();
     } catch(err){
-      const msg = (err && err.message) ? err.message : 'Could not retrieve an answer.';
+      console.error(err);
+      const msg = 'The answer service is temporarily unavailable. Your Friction Credits have not been spent. Please try again.';
       $('reveal-body').innerHTML = '<p class="spinner-line">'+escapeHtml(msg)+'</p>'+
         '<button class="btn" id="reveal-retry" style="margin-top:10px;">Try again</button>';
       const retryBtn = $('reveal-retry');
